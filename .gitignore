@@ -5,6 +5,8 @@
 *.egg-info
 
 *.~
+*.wpr  # WingIDE
+*.wpu  # WingIDE
 .installed.cfg
 bin
 develop-eggs
@@ -22,6 +24,7 @@ __pycache__
 .idea
 .venv
 .cache
+.pytest_cache
 docs/_build
 
 # Coverage reports

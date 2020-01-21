@@ -1,4 +1,2 @@
-# -*- coding: utf-8 -*-
-
-__version__ = '0.11.4'
-default_app_config = 'djmoney.apps.MoneyConfig'
+__version__ = "1.0"
+default_app_config = "djmoney.apps.MoneyConfig"

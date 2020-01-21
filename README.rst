@@ -1,4 +1,4 @@
-Django-money
+django-money
 ============
 
 .. image:: https://travis-ci.org/django-money/django-money.svg?branch=master
@@ -20,51 +20,44 @@ Django-money
 A little Django app that uses ``py-moneyed`` to add support for Money
 fields in your models and forms.
 
-Fork of the Django support that was in
-http://code.google.com/p/python-money/
+* Django versions supported: 1.11, 2.1, 2.2, 3.0
+* Python versions supported: 3.5, 3.6, 3.7
+* PyPy versions supported: PyPy3
 
-This version adds tests, and comes with several critical bugfixes.
+If you need support for older versions of Django and Python, please refer to older releases mentioned in `the release notes <https://django-money.readthedocs.io/en/latest/changes.html>`__.
 
-Django versions supported: 1.8, 1.10, 1.11
+Through the dependency ``py-moneyed``, ``django-money`` gets:
 
-Python versions supported: 2.7, 3.3, 3.4, 3.5, 3.6
-
-PyPy versions supported: PyPy 2.6, PyPy3 2.4
-
-If you need support for older versions of Django and Python you can use the latest version in 0.11.x branch.
-
-Via ``py-moneyed``, ``django-money`` gets:
-
--  Support for proper Money value handling (using the standard Money
-   design pattern)
--  A currency class and definitions for all currencies in circulation
--  Formatting of most currencies with correct currency sign
+* Support for proper Money value handling (using the standard Money
+  design pattern)
+* A currency class and definitions for all currencies in circulation
+* Formatting of most currencies with correct currency sign
 
 Installation
 ------------
 
-Django-money currently needs ``py-moneyed`` v0.7 (or later) to work.
-
-You can obtain the source code for ``django-money`` from here:
-
-::
-
-    https://github.com/django-money/django-money
-
-And the source for ``py-moneyed`` from here:
-
-::
-
-    https://github.com/limist/py-moneyed
-
 Using `pip`:
 
-    pip install py-moneyed django-money
+.. code:: bash
+
+   $ pip install django-money
+
+This automatically installs ``py-moneyed`` v0.7 (or later).
+
+Add ``djmoney`` to your ``INSTALLED_APPS``. This is required so that money field are displayed correctly in the admin.
+
+.. code:: python
+
+   INSTALLED_APPS = [
+      ...,
+      'djmoney',
+      ...
+   ]
 
 Model usage
 -----------
 
-Use as normal model fields
+Use as normal model fields:
 
 .. code:: python
 
@@ -73,7 +66,20 @@ Use as normal model fields
 
 
         class BankAccount(models.Model):
-            balance = MoneyField(max_digits=10, decimal_places=2, default_currency='USD')
+            balance = MoneyField(max_digits=14, decimal_places=2, default_currency='USD')
+
+To comply with certain strict accounting or financial regulations, you may consider using ``max_digits=19`` and ``decimal_places=4``, see more in this `StackOverflow answer <https://stackoverflow.com/a/224866/405682>`__
+
+It is also possible to have a nullable ``MoneyField``:
+
+.. code:: python
+
+        class BankAccount(models.Model):
+            money = MoneyField(max_digits=10, decimal_places=2, null=True, default_currency=None)
+
+        account = BankAccount.objects.create()
+        assert account.money is None
+        assert account.money_currency is None
 
 Searching for models with money fields:
 
@@ -88,17 +94,46 @@ Searching for models with money fields:
         BankAccount.objects.filter(balance__gt=Money(1, 'USD'))
         # Returns the "account" object
 
+
+Field validation
+----------------
+
+There are 3 different possibilities for field validation:
+
+* by numeric part of money despite on currency;
+* by single money amount;
+* by multiple money amounts.
+
+All of them could be used in a combination as is shown below:
+
 .. code:: python
 
-        from django.core.validators import MinValueValidator
         from django.db import models
         from djmoney.models.fields import MoneyField
         from djmoney.money import Money
+        from djmoney.models.validators import MaxMoneyValidator, MinMoneyValidator
 
 
         class BankAccount(models.Model):
-            balance = MoneyField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Money(100, 'GBP'))])
+            balance = MoneyField(
+                max_digits=10,
+                decimal_places=2,
+                validators=[
+                    MinMoneyValidator(10),
+                    MaxMoneyValidator(1500),
+                    MinMoneyValidator(Money(500, 'NOK')),
+                    MaxMoneyValidator(Money(900, 'NOK')),
+                    MinMoneyValidator({'EUR': 100, 'USD': 50}),
+                    MaxMoneyValidator({'EUR': 1000, 'USD': 500}),
+                ]
+            )
 
+The ``balance`` field from the model above has the following validation:
+
+* All input values should be between 10 and 1500 despite on currency;
+* Norwegian Crowns amount (NOK) should be between 500 and 900;
+* Euros should be between 100 and 1000;
+* US Dollars should be between 50 and 500;
 
 Adding a new Currency
 ---------------------
@@ -152,7 +187,7 @@ Additionally there is an ability to specify currency choices directly:
 .. code:: python
 
         CURRENCIES = ('USD', 'EUR')
-        CURRENCY_CHOICES = (('USD', 'USD $'), ('EUR', 'EUR €'))
+        CURRENCY_CHOICES = [('USD', 'USD $'), ('EUR', 'EUR €')]
 
 Important note on model managers
 --------------------------------
@@ -264,7 +299,7 @@ Install the required packages:
 
     cd ./django-money/
 
-    pip install -e .[tests] # installation with required packages for testing
+    pip install -e ".[test]" # installation with required packages for testing
 
 Recommended way to run the tests:
 
@@ -281,8 +316,118 @@ Testing the application in the current environment python:
 Working with Exchange Rates
 ---------------------------
 
-To work with exchange rates, check out this repo that builds off of
-django-money: https://github.com/evonove/django-money-rates
+To work with exchange rates, add the following to your ``INSTALLED_APPS``.
+
+.. code:: python
+
+    INSTALLED_APPS = [
+        ...,
+        'djmoney.contrib.exchange',
+    ]
+
+Also, it is required to have ``certifi`` installed.
+It could be done via installing ``djmoney`` with ``exchange`` extra:
+
+.. code:: bash
+
+    pip install "django-money[exchange]"
+
+To create required relations run ``python manage.py migrate``. To fill these relations with data you need to choose a
+data source. Currently, 2 data sources are supported - https://openexchangerates.org/ (default) and https://fixer.io/.
+To choose another data source set ``EXCHANGE_BACKEND`` settings with importable string to the backend you need:
+
+.. code:: python
+
+    EXCHANGE_BACKEND = 'djmoney.contrib.exchange.backends.FixerBackend'
+
+If you want to implement your own backend, you need to extend ``djmoney.contrib.exchange.backends.base.BaseExchangeBackend``.
+Two data sources mentioned above are not open, so you have to specify access keys in order to use them:
+
+``OPEN_EXCHANGE_RATES_APP_ID`` - '<your actual key from openexchangerates.org>'
+
+``FIXER_ACCESS_KEY`` - '<your actual key from fixer.io>'
+
+Backends return rates for a base currency, by default it is USD, but could be changed via ``BASE_CURRENCY`` setting.
+Open Exchanger Rates & Fixer supports some extra stuff, like historical data or restricting currencies
+in responses to the certain list. In order to use these features you could change default URLs for these backends:
+
+.. code:: python
+
+    OPEN_EXCHANGE_RATES_URL = 'https://openexchangerates.org/api/historical/2017-01-01.json?symbols=EUR,NOK,SEK,CZK'
+    FIXER_URL = 'http://data.fixer.io/api/2013-12-24?symbols=EUR,NOK,SEK,CZK'
+
+Or, you could pass it directly to ``update_rates`` method:
+
+.. code:: python
+
+    >>> from djmoney.contrib.exchange.backends import OpenExchangeRatesBackend
+    >>> backend = OpenExchangeRatesBackend(url='https://openexchangerates.org/api/historical/2017-01-01.json')
+    >>> backend.update_rates(symbols='EUR,NOK,SEK,CZK')
+
+There is a possibility to use multiple backends in the same time:
+
+.. code:: python
+
+    >>> from djmoney.contrib.exchange.backends import FixerBackend, OpenExchangeRatesBackend
+    >>> from djmoney.contrib.exchange.models import get_rate
+    >>> OpenExchangeRatesBackend().update_rates()
+    >>> FixerBackend().update_rates()
+    >>> get_rate('USD', 'EUR', backend=OpenExchangeRatesBackend.name)
+    >>> get_rate('USD', 'EUR', backend=FixerBackend.name)
+
+Regular operations with ``Money`` will use ``EXCHANGE_BACKEND`` backend to get the rates.
+Also, there are two management commands for updating rates and removing them:
+
+.. code:: bash
+
+    $ python manage.py update_rates
+    Successfully updated rates from openexchangerates.org
+    $ python manage.py clear_rates
+    Successfully cleared rates for openexchangerates.org
+
+Both of them accept ``-b/--backend`` option, that will update/clear data only for this backend.
+And ``clear_rates`` accepts ``-a/--all`` option, that will clear data for all backends.
+
+To set up a periodic rates update you could use Celery task:
+
+.. code:: python
+
+    CELERYBEAT_SCHEDULE = {
+        'update_rates': {
+            'task': 'path.to.your.task',
+            'schedule': crontab(minute=0, hour=0),
+            'kwargs': {}  # For custom arguments
+        }
+    }
+
+Example task implementation:
+
+.. code:: python
+
+    from django.utils.module_loading import import_string
+
+    from celery import Celery
+    from djmoney import settings
+
+
+    app = Celery('tasks', broker='pyamqp://guest@localhost//')
+
+
+    @app.task
+    def update_rates(backend=settings.EXCHANGE_BACKEND, **kwargs):
+        backend = import_string(backend)()
+        backend.update_rates(**kwargs)
+
+To convert one currency to another:
+
+.. code:: python
+
+    >>> from djmoney.money import Money
+    >>> from djmoney.contrib.exchange.models import convert_money
+    >>> convert_money(Money(100, 'EUR'), 'USD')
+    <Money: 122.8184375038380800 USD>
+
+Exchange rates are integrated with Django Admin.
 
 django-money can be configured to automatically use this app for currency
 conversions by settings ``AUTO_CONVERT_MONEY = True`` in your Django
@@ -321,9 +466,42 @@ Built-in serializer works in the following way:
         ('amount', '10.000'),
     ])
 
-Known Issues
-------------
-Updates to a model form will not save in Django 1.10.1.  They will save in 1.10.0 and is expected to be fixed in Django 1.10.2.
-::
+Note that when specifying individual fields on your serializer, the amount and currency fields are treated separately.
+To achieve the same behaviour as above you would include both field names:
 
-     https://github.com/django/django/pull/7217
+.. code:: python
+
+    class Serializer(serializers.ModelSerializer):
+        class Meta:
+            model = Expenses
+            fields = ('id', 'amount', 'amount_currency')
+
+Customization
+-------------
+
+If there is a need to customize the process deconstructing ``Money`` instances onto Django Fields and the other way around,
+then it is possible to use a custom descriptor like this one:
+
+.. code:: python
+
+    class MyMoneyDescriptor:
+
+        def __get__(self, obj, type=None):
+            amount = obj.__dict__[self.field.name]
+            return Money(amount, "EUR")
+
+It will always use ``EUR`` for all ``Money`` instances when ``obj.money`` is called. Then it should be passed to ``MoneyField``:
+
+.. code:: python
+
+    class Expenses(models.Model):
+        amount = MoneyField(max_digits=10, decimal_places=2, money_descriptor_class=MyMoneyDescriptor)
+
+
+Background
+----------
+
+This project is a fork of the Django support that was in
+http://code.google.com/p/python-money/
+
+This version adds tests, and comes with several critical bugfixes.
